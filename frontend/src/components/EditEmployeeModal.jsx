@@ -109,11 +109,11 @@ export default function EditEmployeeModal({ open, employee, onClose, onSave }) {
                 />
               </Field>
 
-              <Field label="Flag (optional)">
+              {/* <Field label="Flag (optional)">
                 <div style={{ fontSize: 12, opacity: 0.7, paddingTop: 10 }}>
                   Use kebab action to flag/unflag
                 </div>
-              </Field>
+              </Field> */}
             </div>
 
             <Field label="Subjects (comma-separated)">

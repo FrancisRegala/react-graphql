@@ -1,5 +1,20 @@
 import { gql } from "@apollo/client";
 
+export const ADD_EMPLOYEE_MUTATION = gql`
+  mutation AddEmployee($input: AddEmployeeInput!) {
+    addEmployee(input: $input) {
+      id
+      name
+      age
+      class
+      subjects
+      attendance
+      flagged
+      updatedAt
+    }
+  }
+`;
+
 export const FLAG_EMPLOYEE_MUTATION = gql`
   mutation FlagEmployee($id: ID!, $flagged: Boolean!) {
     flagEmployee(id: $id, flagged: $flagged) {

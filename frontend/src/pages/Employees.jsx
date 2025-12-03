@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation } from "@apollo/client/react";
 import { useToast } from "../components/ToastProvider";
 
-
+import AddEmployeeModal from "../components/AddEmployeeModal";
+import { ADD_EMPLOYEE_MUTATION } from "../gql";
 import AppLayout from "../components/AppLayout";
 import EditEmployeeModal from "../components/EditEmployeeModal";
 
@@ -156,6 +157,10 @@ export default function Employees() {
   const token = localStorage.getItem("token");
   const role = localStorage.getItem("role") || "unknown";
   const isAdmin = role === "admin";
+  const [addOpen, setAddOpen] = useState(false);
+  const [addEmployee] = useMutation(ADD_EMPLOYEE_MUTATION);
+  const [sortBy, setSortBy] = useState("UPDATED_AT"); // NAME | AGE | CLASS | ATTENDANCE | UPDATED_AT
+  const [sortDirection, setSortDirection] = useState("DESC"); // ASC | DESC
 
   const [viewMode, setViewMode] = useState("grid"); // "grid" | "tile"
   const [page, setPage] = useState(1);
@@ -168,11 +173,12 @@ export default function Employees() {
   const variables = useMemo(
     () => ({
       pagination: { page, pageSize },
-      sort: { sortBy: "UPDATED_AT", sortDirection: "DESC" },
+      sort: { sortBy, sortDirection },
       filter: null,
     }),
-    [page]
+    [page, pageSize, sortBy, sortDirection]
   );
+
 
   const { data, loading, error, refetch } = useQuery(EMPLOYEES_QUERY, {
     variables,
@@ -189,6 +195,18 @@ export default function Employees() {
   const items = data?.employees?.items ?? [];
   const pageInfo = data?.employees?.pageInfo;
 
+  const createEmployee = async (input) => {
+    try {
+      await addEmployee({ variables: { input } });
+      setAddOpen(false);
+      // simplest: refetch to include the new record
+      await refetch();
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+
   const openEdit = (emp) => {
     setActiveEmployee(emp);
     setEditOpen(true);
@@ -200,134 +218,134 @@ export default function Employees() {
   };
 
   const doFlagToggle = async (emp) => {
-  try {
-    const nextFlag = !emp.flagged;
+    try {
+      const nextFlag = !emp.flagged;
 
-    await flagEmployee({
-      variables: { id: emp.id, flagged: nextFlag },
-      optimisticResponse: {
-        flagEmployee: {
-          __typename: "Employee",
-          id: emp.id,
-          flagged: nextFlag,
-          updatedAt: new Date().toISOString(),
-        },
-      },
-      update: (cache, { data }) => {
-        // Update the employee object in cache
-        cache.modify({
-          id: cache.identify({ __typename: "Employee", id: emp.id }),
-          fields: {
-            flagged: () => data?.flagEmployee?.flagged ?? nextFlag,
-            updatedAt: () => data?.flagEmployee?.updatedAt ?? new Date().toISOString(),
+      await flagEmployee({
+        variables: { id: emp.id, flagged: nextFlag },
+        optimisticResponse: {
+          flagEmployee: {
+            __typename: "Employee",
+            id: emp.id,
+            flagged: nextFlag,
+            updatedAt: new Date().toISOString(),
           },
-        });
-      },
-    });
+        },
+        update: (cache, { data }) => {
+          // Update the employee object in cache
+          cache.modify({
+            id: cache.identify({ __typename: "Employee", id: emp.id }),
+            fields: {
+              flagged: () => data?.flagEmployee?.flagged ?? nextFlag,
+              updatedAt: () => data?.flagEmployee?.updatedAt ?? new Date().toISOString(),
+            },
+          });
+        },
+      });
 
-    push({
-      type: "success",
-      title: "Updated",
-      message: `${emp.name} ${nextFlag ? "flagged" : "unflagged"}.`,
-    });
-  } catch (e) {
-    push({ type: "error", title: "Action failed", message: e.message });
-  }
-};
+      push({
+        type: "success",
+        title: "Updated",
+        message: `${emp.name} ${nextFlag ? "flagged" : "unflagged"}.`,
+      });
+    } catch (e) {
+      push({ type: "error", title: "Action failed", message: e.message });
+    }
+  };
 
   const doDelete = async (emp) => {
-  const ok = confirm(`Delete ${emp.name}? This cannot be undone.`);
-  if (!ok) return;
+    const ok = confirm(`Delete ${emp.name}? This cannot be undone.`);
+    if (!ok) return;
 
-  try {
-    await deleteEmployee({
-      variables: { id: emp.id },
-      optimisticResponse: { deleteEmployee: true },
-      update: (cache) => {
-        // Remove from employees list in the cache for current query variables
-        cache.modify({
-          fields: {
-            employees(existingConn, { readField }) {
-              if (!existingConn?.items) return existingConn;
+    try {
+      await deleteEmployee({
+        variables: { id: emp.id },
+        optimisticResponse: { deleteEmployee: true },
+        update: (cache) => {
+          // Remove from employees list in the cache for current query variables
+          cache.modify({
+            fields: {
+              employees(existingConn, { readField }) {
+                if (!existingConn?.items) return existingConn;
 
-              const nextItems = existingConn.items.filter(
-                (ref) => readField("id", ref) !== emp.id
-              );
+                const nextItems = existingConn.items.filter(
+                  (ref) => readField("id", ref) !== emp.id
+                );
 
-              const totalCount = (existingConn.pageInfo?.totalCount ?? nextItems.length) - 1;
+                const totalCount = (existingConn.pageInfo?.totalCount ?? nextItems.length) - 1;
 
-              return {
-                ...existingConn,
-                items: nextItems,
-                pageInfo: {
-                  ...existingConn.pageInfo,
-                  totalCount: Math.max(0, totalCount),
-                },
-              };
+                return {
+                  ...existingConn,
+                  items: nextItems,
+                  pageInfo: {
+                    ...existingConn.pageInfo,
+                    totalCount: Math.max(0, totalCount),
+                  },
+                };
+              },
             },
-          },
-        });
+          });
 
-        cache.evict({ id: cache.identify({ __typename: "Employee", id: emp.id }) });
-        cache.gc();
-      },
-    });
+          cache.evict({ id: cache.identify({ __typename: "Employee", id: emp.id }) });
+          cache.gc();
+        },
+      });
 
-    push({ type: "success", title: "Deleted", message: `${emp.name} removed.` });
-  } catch (e) {
-    push({ type: "error", title: "Delete failed", message: e.message });
-  }
-};
+      push({ type: "success", title: "Deleted", message: `${emp.name} removed.` });
+    } catch (e) {
+      push({ type: "error", title: "Delete failed", message: e.message });
+    }
+  };
 
 
   const saveEdit = async (next) => {
-  try {
-    if (!next.name?.trim()) throw new Error("Name is required.");
-    if (!Number.isInteger(next.age) || next.age < 0 || next.age > 120) {
-      throw new Error("Age must be an integer between 0 and 120.");
-    }
-    if (!next.class?.trim()) throw new Error("Class is required.");
-    if (!Number.isInteger(next.attendance) || next.attendance < 0 || next.attendance > 100) {
-      throw new Error("Attendance must be an integer between 0 and 100.");
-    }
-    if (!Array.isArray(next.subjects) || next.subjects.length === 0) {
-      throw new Error("Subjects must include at least one subject.");
-    }
+    try {
+      if (!next.name?.trim()) throw new Error("Name is required.");
+      if (!Number.isInteger(next.age) || next.age < 0 || next.age > 120) {
+        throw new Error("Age must be an integer between 0 and 120.");
+      }
+      if (!next.class?.trim()) throw new Error("Class is required.");
+      if (!Number.isInteger(next.attendance) || next.attendance < 0 || next.attendance > 100) {
+        throw new Error("Attendance must be an integer between 0 and 100.");
+      }
+      if (!Array.isArray(next.subjects) || next.subjects.length === 0) {
+        throw new Error("Subjects must include at least one subject.");
+      }
 
-    const optimistic = {
-      __typename: "Employee",
-      id: activeEmployee.id,
-      name: next.name.trim(),
-      age: next.age,
-      class: next.class.trim(),
-      subjects: next.subjects,
-      attendance: next.attendance,
-      flagged: activeEmployee.flagged,
-      updatedAt: new Date().toISOString(),
-    };
-
-    await updateEmployee({
-      variables: {
+      const optimistic = {
+        __typename: "Employee",
         id: activeEmployee.id,
-        input: {
-          name: optimistic.name,
-          age: optimistic.age,
-          class: optimistic.class,
-          attendance: optimistic.attendance,
-          subjects: optimistic.subjects,
-        },
-      },
-      optimisticResponse: {
-        updateEmployee: optimistic,
-      },
-    });
+        name: next.name.trim(),
+        age: next.age,
+        class: next.class.trim(),
+        subjects: next.subjects,
+        attendance: next.attendance,
+        flagged: activeEmployee.flagged,
+        updatedAt: new Date().toISOString(),
+      };
 
-    closeEdit();
-    push({ type: "success", title: "Saved", message: "Employee updated." });
-  } catch (e) {
-    push({ type: "error", title: "Save failed", message: e.message });
-  }
-};
+      await updateEmployee({
+        variables: {
+          id: activeEmployee.id,
+          input: {
+            name: optimistic.name,
+            age: optimistic.age,
+            class: optimistic.class,
+            attendance: optimistic.attendance,
+            subjects: optimistic.subjects,
+          },
+        },
+        optimisticResponse: {
+          updateEmployee: optimistic,
+        },
+      });
+
+      closeEdit();
+      push({ type: "success", title: "Saved", message: "Employee updated." });
+    } catch (e) {
+      push({ type: "error", title: "Save failed", message: e.message });
+    }
+  };
 
 
   if (!token) {
@@ -376,6 +394,12 @@ export default function Employees() {
           >
             Toggle {viewMode === "grid" ? "Tile" : "Grid"}
           </button>
+
+          {isAdmin && (
+            <button onClick={() => setAddOpen(true)} style={topBtnStyle}>
+              + Add Employee
+            </button>
+          )}
         </div>
       </div>
 
@@ -387,6 +411,26 @@ export default function Employees() {
       {/* GRID VIEW (10 columns) */}
       {viewMode === "grid" && (
         <div style={{ marginTop: 14, overflowX: "auto" }}>
+          <div style={{ marginBottom: 14, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <label style={controlLabel}>
+              Sort By
+              <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={selectStyle}>
+                <option value="UPDATED_AT">Updated</option>
+                <option value="NAME">Name</option>
+                <option value="AGE">Age</option>
+                <option value="CLASS">Class</option>
+                <option value="ATTENDANCE">Attendance</option>
+              </select>
+            </label>
+
+            <label style={controlLabel}>
+              Direction
+              <select value={sortDirection} onChange={(e) => setSortDirection(e.target.value)} style={selectStyle}>
+                <option value="DESC">Desc</option>
+                <option value="ASC">Asc</option>
+              </select>
+            </label>
+          </div>
           <div
             style={{
               minWidth: 1100,
@@ -430,15 +474,20 @@ export default function Employees() {
                 }}
               >
                 <div
+                  title={e.id}
                   style={{
-                    fontFamily:
-                      "ui-monospace, SFMono-Regular, Menlo, monospace",
+                    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
                     fontSize: 12,
                     opacity: 0.8,
+                    maxWidth: 140,          // keep it within the column width
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
                   }}
                 >
                   {e.id}
                 </div>
+
                 <div style={{ fontWeight: 800 }}>{e.name}</div>
                 <div>{e.age}</div>
                 <div>
@@ -625,6 +674,13 @@ export default function Employees() {
           Saving changes...
         </div>
       )}
+
+      <AddEmployeeModal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        onCreate={createEmployee}
+      />
+
     </AppLayout>
   );
 }
@@ -649,3 +705,22 @@ const smallBtnStyle = {
 };
 
 const gridCols = "150px 180px 70px 90px 200px 120px 90px 190px 220px 90px";
+
+const controlLabel = {
+  display: "grid",
+  gap: 6,
+  fontSize: 12,
+  fontWeight: 900,
+  opacity: 0.75,
+};
+
+const selectStyle = {
+  border: "1px solid #eee",
+  background: "white",
+  borderRadius: 14,
+  padding: "10px 12px",
+  cursor: "pointer",
+  fontWeight: 800,
+  fontSize: 13,
+};
+

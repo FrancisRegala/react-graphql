@@ -10,7 +10,7 @@ import { randomUUID } from "crypto";
 const db = {
   employees: [
     {
-      id: "emp_1",
+      id: "emp_1e8f9b2a-1234-4bcd-9abc-1ef234567890",
       name: "Ava Johnson",
       age: 28,
       class: "A",
@@ -21,7 +21,7 @@ const db = {
       updatedAt: new Date("2025-12-01T10:00:00Z").toISOString(),
     },
     {
-      id: "emp_2",
+      id: "emp_2e8f9b2a-1234-4bcd-9abc-1ef234567890",
       name: "Noah Santos",
       age: 34,
       class: "B",
@@ -32,7 +32,7 @@ const db = {
       updatedAt: new Date("2025-12-02T08:30:00Z").toISOString(),
     },
     {
-      id: "emp_3",
+      id: "emp_9993e780-4f30-443d-9abc-1ef234567890",
       name: "Mia Chen",
       age: 23,
       class: "A",
